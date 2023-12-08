@@ -1,0 +1,487 @@
+---
+title: "Thirsty Turtle Sales Data"
+author: "Erin Lockaby"
+date: "`r Sys.Date()`"
+output: 
+   
+  html_document: 
+    css: template.css
+    highlight: breezedark
+    theme: null
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Buisness Objective
+The owner of the Thirsty Turtle would like to know what products are selling well. They would also like to create a par to simplifying their ordering process.
+
+### Setting up my Enviroment
+
+I am going to begin by installing and loading the packages I will be using for this analysis.
+```{r message=FALSE, warning=FALSE}
+library("tidyverse")
+
+library("ggplot2")
+
+library("readr")
+
+library("kableExtra")
+```
+ 
+### Importing my Data
+```{r}
+R_Data_for_Thirsty_Turtle <- read_csv("R Data for Thirsty Turtle.csv")
+
+View(R_Data_for_Thirsty_Turtle)
+```
+I changed a few of the columns data types from character to double, as the data in those column are currency. I was able to get this data straight from the POS system. In this next code chunk, I am going to clean up the column names and abbreviate the data set name. 
+```{r}
+ttd <-
+
+   R_Data_for_Thirsty_Turtle %>% 
+
+  rename(revenue_class = 'Revenue Class', default_price = 'Default Price', 
+
+         avg_sale_price = 'Avg. Sale Price', gross = 'Gross Sales',
+
+         net = 'Net Sales')
+```
+### Weekly Averages
+I wanted to see how much of each product the bar went through on average a week, so the code below breaks up the items by revenue class, or department, and then divides the quantity sold by 24 weeks. Then for I wanted to see how many units we average a week, so we could set a par for ordering. The the quantity sold by how many of the item go into one unit. There are 22.5 shots in a standard liter bottle of liquor, 24 beers in a case, 124 pints in a keg, and 82 24oz glasses in a keg. 
+```{r}
+mttd <- ttd %>%
+  
+  mutate(
+  
+      Avg_Weekly_Usage_by_unit = ifelse(
+    
+          revenue_class == "Liquor", round(Qty / 24 / 22.5, 0),
+      
+          ifelse(
+        
+            Department == "Bottle Beer", round(Qty / 24 / 24, 0),
+        
+            ifelse(
+          
+              Department == "Draft Beer" & str_detect(Item, "16"),
+          
+              round(Qty / 24 / 124, 0),
+          
+              ifelse(
+            
+                Department == "Draft Beer" & str_detect(Item, "24"),
+            
+                round(Qty / 24 / 82, 0),
+            
+                            NA
+          
+                )
+        
+              )
+      
+            )
+    
+          ),
+    
+      Avg_Weekly_Usage = ifelse(
+      
+        revenue_class == "Liquor", round(Qty / 24, 0),
+      
+        ifelse(
+        
+          Department == "Bottle Beer", round(Qty / 24, 0),
+        
+          ifelse(
+          
+            Department == "Draft Beer" & str_detect(Item, "16"),
+        
+              round(Qty / 24, 0),
+          
+            ifelse(
+            
+              Department == "Draft Beer" & str_detect(Item, "24"),
+            
+              round(Qty / 24, 0),
+            
+                          NA
+          
+              )
+        
+            )
+      
+          )
+    
+        )
+  
+      )
+```
+My suggestion, since this particular bar has had problems with the ordering, and runs out of product often, I would add at least 1 unit to all of the pars we calculated in avg_weekly_sales_by_unit, so that it covers what is used and so that there is a backup just in case. I would also recommend revisiting this often to make adjustments, and being aware of big events that could need extra inventory to get through the week. Here is a sample of the new par list for liquor and beer. 
+
+```{r echo=TRUE}
+par_list <- mttd %>%
+
+  mutate(par = Avg_Weekly_Usage_by_unit + 1) %>%
+
+  select(Item, Department, revenue_class, par) %>%
+
+  filter(!is.na(par)) %>%
+
+  head(5)
+
+```
+Now I would like to take a look at what is selling the most at the Thirsty Turtle.
+
+```{r}
+percentage_data <- mttd %>%
+
+  group_by(revenue_class) %>%
+
+  summarize(percentage_sales = sum(net) / sum(mttd$net) * 100)
+
+pie_chart <- ggplot(percentage_data, aes(x = "", y = percentage_sales, fill = 
+
+                                           revenue_class)) +
+
+  geom_bar(stat = "identity", width = 1, color = "white") +
+
+  coord_polar("y") +
+
+  theme_void() +
+
+  scale_fill_manual(values = c("#ff00ff", "#00ff00", "#ffff00", "#00ffff", "#ff9900", 
+
+                               "#66ffcc","#cc66ff", "#ff471a")) +
+
+  labs(title = "Percentage of Sales by Revenue Class",
+
+       plot.title.position = "plot",
+
+       title.theme = element_text(hjust = 0.5)) + 
+
+  geom_text(aes(label = paste0(round(percentage_sales, 1), "%")), 
+
+            position = position_stack(vjust = 0.5),
+
+            size = 6) +
+
+  theme(
+
+      plot.background = element_rect(fill = "black"),
+
+      panel.background = element_rect(fill = "black"),
+
+      text = element_text(color = "white")
+
+      )
+
+print(pie_chart)
+```
+
+
+This shows that almost half of our sales comes from our liquor products. Let's dive a little deeper look to see which liquors are selling.But first, I'm going to get my theme prepared for the next set of charts, since they will all be bar charts.
+
+```{r}
+my_theme <- theme(
+
+    plot.background = element_rect(fill = "black"),
+
+    panel.background = element_rect(fill = "black"),
+
+    text = element_text(color = "white"),
+
+    axis.text.x = element_text(color = "white", angle = 45, hjust = 1),
+
+    axis.text.y = element_text(color = "white"),
+
+    legend.position = "none"
+
+    )
+
+neon_colors <- c("#ff00ff", "#00ff00", "#ffff00", "#00ffff", "#ff9900", 
+
+                               "#66ffcc","#cc66ff", "#ff471a")
+```
+
+
+### Whiskey
+```{r echo=TRUE}
+selected_department <- "Whiskey"  
+
+filtered_data <- mttd %>%
+
+    filter(Department == selected_department)
+
+filtered_data <- filtered_data %>%
+
+  mutate(Qty = as.numeric(Qty))
+
+top_sellers_chart_whiskey <- filtered_data %>%
+
+  group_by(Item) %>%
+
+  summarise(Qty = sum(Qty)) %>%
+
+  top_n(10, Qty) %>%
+
+  ggplot(aes(x = reorder(Item, -Qty), y = Qty, fill = Item)) +
+
+  geom_bar(stat = "identity", position = "dodge") +
+
+  geom_text(aes(label = Qty), 
+
+            position = position_dodge(width = 0.9),  
+
+            vjust = -0.5,  
+
+            color = "white", 
+
+            size = 3) +
+
+  scale_fill_manual(values = rep(neon_colors, length.out = 
+
+                                   n_distinct(filtered_data$Item))) +  
+
+
+  labs(title = paste("Top Sellers in", selected_department, "Department"),
+
+       x = "Item", y = "Qty", color = "white") +
+
+  theme_dark() +
+
+  my_theme
+
+
+print(top_sellers_chart_whiskey)
+
+```
+
+### Tequila
+```{r}
+
+selected_department2 <- "Tequila"  
+
+filtered_data2 <- mttd %>%
+
+  filter(Department == selected_department2)
+
+filtered_data2 <- filtered_data2 %>%
+
+  mutate(Qty = as.numeric(Qty))
+
+top_sellers_chart_tequila <- filtered_data2 %>%
+
+  group_by(Item) %>%
+
+  summarise(Qty = sum(Qty)) %>%
+
+  top_n(10, Qty) %>%
+
+  ggplot(aes(x = reorder(Item, -Qty), y = Qty, fill = Item)) +
+
+  geom_bar(stat = "identity", position = "dodge") +
+
+  geom_text(aes(label = Qty), 
+
+            position = position_dodge(width = 0.9), 
+
+            vjust = -0.5, 
+
+            color = "white", 
+
+            size = 3) +
+
+  scale_fill_manual(values = rep(neon_colors, length.out = 
+
+                                   n_distinct(filtered_data$Item))) +  
+
+  labs(title = paste("Top Sellers in", selected_department2, "Department"),
+
+        x = "Item", y = "Qty") +
+
+  theme_dark() +
+
+  my_theme
+
+print(top_sellers_chart_tequila)
+```
+
+### Vodka
+```{r}
+selected_department3 <- "Vodka"  
+
+filtered_data3 <- mttd %>%
+ 
+   filter(Department == selected_department3)
+
+filtered_data3 <- filtered_data3 %>%
+
+  mutate(Qty = as.numeric(Qty))
+
+top_sellers_chart_vodka <- filtered_data3 %>%
+
+  group_by(Item) %>%
+
+  summarise(Qty = sum(Qty)) %>%
+
+  top_n(10, Qty) %>%
+
+  ggplot(aes(x = reorder(Item, -Qty), y = Qty, fill = Item)) +
+
+  geom_bar(stat = "identity", position = "dodge") +
+
+  geom_text(aes(label = Qty),
+
+            position = position_dodge(width = 0.9), 
+
+            vjust = -0.5,  
+
+            color = "white", 
+
+            size = 3) +
+
+  scale_fill_manual(values = rep(neon_colors, 
+
+                                 length.out = n_distinct(filtered_data$Item))) +
+
+  labs(title = paste("Top Sellers in", selected_department3, "Department"), 
+
+       x = "Item", y = "Qty") +
+
+  theme_dark() +
+
+  my_theme
+
+print(top_sellers_chart_vodka)
+
+```
+
+### Bottled Beer
+```{r}
+
+selected_department4 <- "Bottle Beer"  
+
+filtered_data4 <- mttd %>%
+
+  filter(Department == selected_department4)
+
+filtered_data4 <- filtered_data4 %>%
+
+  mutate(Qty = as.numeric(Qty))
+
+top_sellers_chart_bbeer <- filtered_data4 %>%
+
+   group_by(Item) %>%
+
+   summarise(Qty = sum(Qty)) %>%
+
+   top_n(10, Qty) %>%
+
+   ggplot(aes(x = reorder(Item, -Qty), y = Qty, fill = Item)) +
+
+   geom_bar(stat = "identity", position = "dodge") +
+ 
+   geom_text(aes(label = Qty), 
+
+             position = position_dodge(width = 0.9), 
+
+             vjust = -0.5, 
+
+             color = "white", 
+
+             size = 3) +
+
+  scale_fill_manual(values = rep(neon_colors, length.out = 
+
+                                   n_distinct(filtered_data4$Item))) +  
+
+  labs(title = paste("Top Sellers in", selected_department4, "Department"),
+
+       x = "Item", y = "Qty") +
+
+  theme_dark() +
+
+  my_theme
+
+print(top_sellers_chart_bbeer)
+
+```
+
+
+### Draft Beer
+```{r}
+
+selected_department6 <- "Draft Beer"  
+
+filtered_data6 <- mttd %>%
+
+   filter(Department == selected_department6)
+
+filtered_data6 <- filtered_data6 %>%
+
+   mutate(Qty = as.numeric(Qty))
+
+top_sellers_chart_dbeer <- filtered_data6 %>% 
+
+  group_by(Item) %>%
+
+  summarise(Qty = sum(Qty)) %>%
+
+  top_n(10, Qty) %>%
+
+  ggplot(aes(x = reorder(Item, -Qty), y = Qty, fill = Item)) +
+
+  geom_bar(stat = "identity", position = "dodge") +
+
+  geom_text(aes(label = Qty), 
+
+              position = position_dodge(width = 0.9), 
+
+              vjust = -0.5,  
+
+              color = "white", 
+
+              size = 3) +
+
+  scale_fill_manual(values = rep(neon_colors, length.out = 
+
+                                   n_distinct(filtered_data6$Item))) +  
+
+  labs(title = paste("Top Sellers in", selected_department6, "Department"),
+
+        x = "Item", y = "Qty") +
+
+  theme_dark() +
+
+   my_theme
+
+
+print(top_sellers_chart_dbeer)
+
+
+```
+
+
+### In Conclusion
+
+  In the world of bartending, the art of mixing the perfect cocktail goes beyond the ingredients—it's about understanding the preferences of diverse patrons, optimizing processes, and ensuring an exceptional experience. Throughout my journey as a bartender, I've discovered a fascinating parallel between this dynamic profession and the realm of data analytics.
+    Just as a mixologist meticulously crafts a drink to suit individual tastes, data analytics involves the careful analysis of information to derive meaningful insights. From managing inventory and predicting popular trends to optimizing sales strategies, the principles of data analytics seamlessly align with the challenges faced behind the bar.    
+    In my project analyzing the sales data of the Thirsty Turtle, I've applied the same analytical mindset cultivated in the fast-paced and ever-changing environment of bartending. By delving into the intricacies of revenue classes, departmental trends, and top-selling items, I've not only uncovered valuable insights but also honed my ability to make informed decisions—skills that transcend the boundaries of the bar.
+  This project serves as a testament to my dedication to continuous improvement and my passion for leveraging data to drive meaningful outcomes. As I embark on the next phase of my professional journey, I am excited to bring this unique perspective, blending mixology with analytics, to a dynamic role where creativity, adaptability, and strategic thinking are valued.
+  For a more in-depth exploration of this project, please feel free to visit my project page on my resume. I am eager to contribute my skills, enthusiasm, and the valuable lessons learned from the world of bartending and data analytics to a team ready to embrace innovation and excellence.
+
+<span style="font-family: 'Dreaming Outloud Script Pro', monospace; font-size: 14px; color: #00ff00;">
+Erin Lockaby
+</span>
+
+
+Link to the data that I used for this project which was downloaded from the POS that the Thirsty Turtle uses
+[Thirsty Turtle Sales Data](https://1drv.ms/x/s!AmX9AfCpCd01k3_0pbWrMNahyMSH?e=E8DicK) <br>
+
+
+### Connect with Me
+
+[LinkedIn](https://www.linkedin.com/in/erin-lockaby) | [Portfolio](https://elockaby927.wixsite.com/data-analytics-portf)
+
+
